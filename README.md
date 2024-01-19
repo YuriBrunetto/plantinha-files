@@ -8,4 +8,5 @@
 - Typescript
 - Fastify
 - Prisma
+- Zod
 - Cloudfare R2
