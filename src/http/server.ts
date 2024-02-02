@@ -3,14 +3,17 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { PrismaClient } from '@prisma/client'
 import cors from 'cors'
 import express from 'express'
-import formidable from 'formidable'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { env } from './../env'
 import { r2 } from './../lib/cloudflare'
+import multer from 'multer'
+import fs from 'fs'
+import path from 'path'
 
 const app = express()
 const prisma = new PrismaClient()
+const upload = multer({ dest: 'uploads/' })
 
 app.use((req, res, next) => {
   // Website you wish to allow to connect
@@ -34,7 +37,7 @@ app.use((req, res, next) => {
 })
 app.use(express.json({ limit: '50mb' }))
 app.use(
-  express.urlencoded({ limit: '50mb', extended: true, parameterLimit: 1000000 })
+  express.urlencoded({ limit: '50mb', extended: true, parameterLimit: 2 })
 )
 app.use(cors())
 
@@ -42,52 +45,72 @@ app.get('/', (_, res) => {
   res.send('🤓')
 })
 
-app.post('/uploads', (req, res, next) => {
-  const form = formidable({})
+app.post('/uploads', upload.single('file'), async (req, res, next) => {
+  if (!req.file) return
 
-  form.parse(req, (err, fields, files) => {
-    console.log(files)
-    res.json({ fields, files })
+  const { file } = req
+
+  console.log('filwe!', file)
+
+  const fileKey = randomUUID().concat('-').concat(file.originalname)
+
+  const signedUrl = await getSignedUrl(
+    r2,
+    new PutObjectCommand({
+      Bucket: 'plantinha-dev',
+      Key: fileKey,
+      ContentType: file.mimetype
+    }),
+    { expiresIn: 600 }
+  )
+
+  await prisma.file.create({
+    data: {
+      name: file.originalname,
+      contentType: file.mimetype,
+      key: fileKey
+    }
   })
-  console.log('aaaaa')
 
-  // res.send({ hello: 'world' })
+  const filePath = path.join(__dirname, '..', '..', 'uploads', file.filename)
 
-  // const fileKey = randomUUID().concat('-').concat(name)
-  //
-  // const signedUrl = await getSignedUrl(
-  //   r2,
-  //   new PutObjectCommand({
-  //     Bucket: 'plantinha-dev',
-  //     Key: fileKey,
-  //     ContentType: contentType
-  //   }),
-  //   { expiresIn: 600 }
-  // )
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      console.error('Error reading file:', err)
+      return
+    }
+    fetch(signedUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.mimetype
+      },
+      body: data
+    })
+      .then(res => {
+        // Delete the file after successful upload
+        fs.unlink(filePath, err => {
+          if (err) {
+            console.error('Error deleting file:', err)
+          } else {
+            console.log('File deleted successfully.')
+          }
+        })
+      })
+      .catch(err => {
+        console.error(err)
+      })
+  })
 
-  // const newFile = await prisma.file.create({
-  //   data: {
-  //     name,
-  //     contentType,
-  //     key: fileKey
-  //   }
-  // })
-  //
-  // fetch(signedUrl, {
-  //   method: 'PUT',
-  //   headers: {
-  //     'Content-Type': 'image/png'
-  //   },
-  //   body: file
-  // })
-  //   .then(res => {
-  //     console.log('bundaares===>', res)
-  //   })
-  //   .catch(err => {
-  //     console.error(err)
-  //   })
-  //
-  // res.send({ signedUrl, fileId: newFile.id })
+  const directLink = await getSignedUrl(
+    r2,
+    new GetObjectCommand({
+      Bucket: 'plantinha-dev',
+      Key: fileKey
+    }),
+    { expiresIn: 600 }
+  )
+
+  res.send({ directLink })
 })
 
 app.get('/uploads/:id', async (req, res) => {
