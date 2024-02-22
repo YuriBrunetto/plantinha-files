@@ -114,26 +114,26 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
   res.status(200).send({ directLink, fileKey })
 })
 
-app.get('/uploads/:id', async (req, res) => {
+app.get('/uploads/:key', async (req, res) => {
   const getFileParamsSchema = z.object({
-    id: z.string().cuid()
+    key: z.string()
   })
 
-  const { id } = getFileParamsSchema.parse(req.params)
+  const { key } = getFileParamsSchema.parse(req.params)
 
-  const file = await prisma.file.findUniqueOrThrow({
-    where: { id }
+  const file = await prisma.file.findFirst({
+    where: { key }
   })
 
   if (!file) {
-    res.sendStatus(404).send(`File with ID "${id}" not found`)
+    res.sendStatus(404).send(`File with key "${key}" not found`)
   }
 
   const signedUrl = await getSignedUrl(
     r2,
     new GetObjectCommand({
       Bucket: 'plantinha-dev',
-      Key: file.key as string
+      Key: file?.key as string
     }),
     { expiresIn: 600 }
   )
