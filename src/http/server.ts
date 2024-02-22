@@ -46,12 +46,12 @@ app.get('/', (_, res) => {
 })
 
 app.post('/uploads', upload.single('file'), async (req, res, next) => {
-  if (!req.file) return
+  // return error file not found
+  if (!req.file) {
+    return res.status(400).send('No files were uploaded.')
+  }
 
   const { file } = req
-
-  console.log('filwe!', file)
-
   const fileKey = randomUUID().concat('-').concat(file.originalname)
 
   const signedUrl = await getSignedUrl(
@@ -79,6 +79,7 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
       console.error('Error reading file:', err)
       return
     }
+
     fetch(signedUrl, {
       method: 'PUT',
       headers: {
@@ -110,7 +111,7 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
     { expiresIn: 600 }
   )
 
-  res.send({ directLink })
+  res.status(200).send({ directLink, fileKey })
 })
 
 app.get('/uploads/:id', async (req, res) => {
@@ -124,6 +125,10 @@ app.get('/uploads/:id', async (req, res) => {
     where: { id }
   })
 
+  if (!file) {
+    res.sendStatus(404).send(`File with ID "${id}" not found`)
+  }
+
   const signedUrl = await getSignedUrl(
     r2,
     new GetObjectCommand({
@@ -133,7 +138,7 @@ app.get('/uploads/:id', async (req, res) => {
     { expiresIn: 600 }
   )
 
-  res.send({ signedUrl })
+  res.status(200).send({ signedUrl })
 })
 
 app.listen(env.PORT, () => {
