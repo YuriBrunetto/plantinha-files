@@ -3,13 +3,15 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { PrismaClient } from '@prisma/client'
 import cors from 'cors'
 import express from 'express'
+import fs from 'fs'
+import multer from 'multer'
 import { randomUUID } from 'node:crypto'
+import path from 'path'
+import tk from 'timekeeper'
 import { z } from 'zod'
+import { getTruncatedTime } from '../utils/truncatedTime'
 import { env } from './../env'
 import { r2 } from './../lib/cloudflare'
-import multer from 'multer'
-import fs from 'fs'
-import path from 'path'
 
 const app = express()
 const prisma = new PrismaClient()
@@ -129,16 +131,22 @@ app.get('/uploads/:key', async (req, res) => {
     res.sendStatus(404).send(`File with key "${key}" not found`)
   }
 
-  const signedUrl = await getSignedUrl(
-    r2,
-    new GetObjectCommand({
-      Bucket: 'plantinha-dev',
-      Key: file?.key as string
-    }),
-    { expiresIn: 600 }
-  )
-
-  res.status(200).send({ signedUrl })
+  tk.withFreeze(getTruncatedTime(), async () => {
+    return await getSignedUrl(
+      r2,
+      new GetObjectCommand({
+        Bucket: 'plantinha-dev',
+        Key: file?.key as string
+      }),
+      { expiresIn: 900 }
+    )
+  })
+    .then(signedUrl => {
+      res.status(200).send({ signedUrl })
+    })
+    .catch(err => {
+      res.status(500).send('Internal server error: ' + err)
+    })
 })
 
 app.listen(env.PORT, () => {
