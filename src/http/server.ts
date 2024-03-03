@@ -63,7 +63,7 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
       Key: fileKey,
       ContentType: file.mimetype
     }),
-    { expiresIn: 600 }
+    { expiresIn: 900 }
   )
 
   await prisma.file.create({
@@ -95,7 +95,7 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
           if (err) {
             console.error('Error deleting file:', err)
           } else {
-            console.log('File deleted successfully.')
+            console.log('File created and deleted successfully.')
           }
         })
       })
@@ -104,16 +104,7 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
       })
   })
 
-  const directLink = await getSignedUrl(
-    r2,
-    new GetObjectCommand({
-      Bucket: 'plantinha-dev',
-      Key: fileKey
-    }),
-    { expiresIn: 600 }
-  )
-
-  res.status(200).send({ directLink, fileKey })
+  res.status(200).send({ fileKey })
 })
 
 app.get('/uploads/:key', async (req, res) => {
@@ -128,7 +119,7 @@ app.get('/uploads/:key', async (req, res) => {
   })
 
   if (!file) {
-    res.sendStatus(404).send(`File with key "${key}" not found`)
+    res.sendStatus(404).send(`File with key "${key}" not found.`)
   }
 
   tk.withFreeze(getTruncatedTime(), async () => {
