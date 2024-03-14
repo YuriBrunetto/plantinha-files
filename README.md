@@ -1,12 +1,12 @@
 # plantinha-files 🪴📁
 
-> Back-end application to manage files of **plantinha** project
+> Back-end application to manage files of [Plantinha 🪴](https://github.com/YuriBrunetto/plantinha) project.
 
 ## Stack
 
 - Node.js
 - Typescript
-- Fastify
+- Express
 - Prisma
 - Zod
-- Cloudfare R2
+- Cloudfare R2 (object store)
