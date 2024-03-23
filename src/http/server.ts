@@ -17,6 +17,26 @@ const app = express()
 const prisma = new PrismaClient()
 const upload = multer({ dest: 'uploads/' })
 
+// app.use((req, res, next) => {
+//   // Website you wish to allow to connect
+//   res.setHeader('Access-Control-Allow-Origin', '127.0.0.1:3000')
+//
+//   // Request methods you wish to allow
+//   res.setHeader(
+//     'Access-Control-Allow-Methods',
+//     'GET, POST, OPTIONS, PUT, PATCH, DELETE'
+//   )
+//
+//   // Request headers you wish to allow
+//   res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type')
+//
+//   // Set to true if you need the website to include cookies in the requests sent
+//   // to the API (e.g. in case you use sessions)
+//   res.setHeader('Access-Control-Allow-Credentials', 'true')
+//
+//   // Pass to next layer of middleware
+//   next()
+// })
 app.use(express.json({ limit: '50mb' }))
 app.use(
   express.urlencoded({ limit: '50mb', extended: true, parameterLimit: 2 })
@@ -43,7 +63,7 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
       Key: fileKey,
       ContentType: file.mimetype
     }),
-    { expiresIn: 900 }
+    { expiresIn: 300 }
   )
 
   await prisma.file.create({
@@ -84,40 +104,45 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
       })
   })
 
-  res.status(200).send({ fileKey })
+  res.status(200).json({ fileKey })
 })
 
 app.get('/uploads/:key', async (req, res) => {
-  const getFileParamsSchema = z.object({
-    key: z.string()
-  })
+  // const getFileParamsSchema = z.object({
+  //   key: z.string()
+  // })
 
-  const { key } = getFileParamsSchema.parse(req.params)
+  // const { key } = getFileParamsSchema.parse(req.params)
+  //
 
-  const file = await prisma.file.findFirst({
-    where: { key }
-  })
+  const { key } = req.params
 
-  if (!file) {
-    res.sendStatus(404).send(`File with key "${key}" not found.`)
+  if (!!key) {
+    const file = await prisma.file.findFirst({
+      where: { key }
+    })
+
+    if (!file) {
+      res.status(404)
+    }
+
+    tk.withFreeze(getTruncatedTime(), async () => {
+      return await getSignedUrl(
+        r2,
+        new GetObjectCommand({
+          Bucket: 'plantinha-dev',
+          Key: file?.key as string
+        }),
+        { expiresIn: 900 }
+      )
+    })
+      .then(signedUrl => {
+        res.status(200).send({ signedUrl })
+      })
+      .catch(err => {
+        res.status(500).send('Internal server error: ' + err)
+      })
   }
-
-  tk.withFreeze(getTruncatedTime(), async () => {
-    return await getSignedUrl(
-      r2,
-      new GetObjectCommand({
-        Bucket: 'plantinha-dev',
-        Key: file?.key as string
-      }),
-      { expiresIn: 900 }
-    )
-  })
-    .then(signedUrl => {
-      res.status(200).send({ signedUrl })
-    })
-    .catch(err => {
-      res.status(500).send('Internal server error: ' + err)
-    })
 })
 
 app.listen(env.PORT, () => {
