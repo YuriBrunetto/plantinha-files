@@ -21,5 +21,4 @@ $ pnpm dev
 - Typescript
 - Express
 - Prisma
-- Zod
 - Cloudfare R2 (object store)

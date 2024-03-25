@@ -8,7 +8,6 @@ import multer from 'multer'
 import { randomUUID } from 'node:crypto'
 import path from 'path'
 import tk from 'timekeeper'
-import { z } from 'zod'
 import { getTruncatedTime } from '../utils/truncatedTime'
 import { env } from './../env'
 import { r2 } from './../lib/cloudflare'
@@ -47,13 +46,13 @@ app.get('/', (_, res) => {
   res.send('🤓')
 })
 
-app.post('/uploads', upload.single('file'), async (req, res, next) => {
-  // return error file not found
-  if (!req.file) {
+app.post('/uploads', upload.single('file'), async (req, res) => {
+  const { file } = req
+
+  if (!file) {
     return res.status(400).send('No files were uploaded.')
   }
 
-  const { file } = req
   const fileKey = randomUUID().concat('-').concat(file.originalname)
 
   const signedUrl = await getSignedUrl(
@@ -61,9 +60,10 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
     new PutObjectCommand({
       Bucket: 'plantinha-dev',
       Key: fileKey,
-      ContentType: file.mimetype
+      ContentType: file.mimetype,
+      ACL: 'public-read'
     }),
-    { expiresIn: 300 }
+    { expiresIn: 600 }
   )
 
   await prisma.file.create({
@@ -89,8 +89,7 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
       },
       body: data
     })
-      .then(res => {
-        // Delete the file after successful upload
+      .then(_ => {
         fs.unlink(filePath, err => {
           if (err) {
             console.error('Error deleting file:', err)
@@ -101,6 +100,7 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
       })
       .catch(err => {
         console.error(err)
+        res.status(500).send('Internal server error: ' + err)
       })
   })
 
@@ -108,41 +108,36 @@ app.post('/uploads', upload.single('file'), async (req, res, next) => {
 })
 
 app.get('/uploads/:key', async (req, res) => {
-  // const getFileParamsSchema = z.object({
-  //   key: z.string()
-  // })
-
-  // const { key } = getFileParamsSchema.parse(req.params)
-  //
-
   const { key } = req.params
 
-  if (!!key) {
-    const file = await prisma.file.findFirst({
-      where: { key }
-    })
-
-    if (!file) {
-      res.status(404)
-    }
-
-    tk.withFreeze(getTruncatedTime(), async () => {
-      return await getSignedUrl(
-        r2,
-        new GetObjectCommand({
-          Bucket: 'plantinha-dev',
-          Key: file?.key as string
-        }),
-        { expiresIn: 900 }
-      )
-    })
-      .then(signedUrl => {
-        res.status(200).send({ signedUrl })
-      })
-      .catch(err => {
-        res.status(500).send('Internal server error: ' + err)
-      })
+  if (!key) {
+    res.status(400).send('Bad request: key is required')
   }
+
+  const file = await prisma.file.findFirst({
+    where: { key }
+  })
+
+  if (!file) {
+    res.status(404)
+  }
+
+  tk.withFreeze(getTruncatedTime(), async () => {
+    return await getSignedUrl(
+      r2,
+      new GetObjectCommand({
+        Bucket: 'plantinha-dev',
+        Key: file?.key as string
+      }),
+      { expiresIn: 900 }
+    )
+  })
+    .then(signedUrl => {
+      res.status(200).send({ signedUrl })
+    })
+    .catch(err => {
+      res.status(500).send('Internal server error: ' + err)
+    })
 })
 
 app.listen(env.PORT, () => {
